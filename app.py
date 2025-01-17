@@ -191,7 +191,30 @@ def validate_env_variables():
 
     logging.debug("✅ All required environment variables are set.")
 
+class AuthBackend(AuthenticationBackend):
+    """خلفية المصادقة"""
 
+    async def authenticate(self, request: Request) -> Tuple[AuthCredentials, BaseUser]:
+        if "Authorization" not in request.headers:
+            return AuthCredentials([]), UnauthenticatedUser()
+
+        auth = request.headers["Authorization"]
+        try:
+            scheme, token = auth.split()
+            if scheme.lower() != 'bearer':
+                return AuthCredentials([]), UnauthenticatedUser()
+
+            # التحقق من التوكن
+            auth_manager = request.app.state.auth_manager
+            payload = await auth_manager.validate_token(token)
+
+            username = payload.get("sub")
+            scopes = payload.get("scopes", [])
+
+            return AuthCredentials(scopes), SimpleUser(username)
+        except Exception as e:
+            logger.error(f"Authentication error: {str(e)}")
+            return AuthCredentials([]), UnauthenticatedUser()
 
 
 
@@ -537,19 +560,6 @@ async def check_redis_health(request: Request, call_next):
 
 
 
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request, exc):
-    """معالج الأخطاء العام"""
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "status": "error",
-            "message": str(exc.detail),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-    )
-
-app.include_router(router)
 
 # Request ID Middleware
 @app.middleware("http")
@@ -741,30 +751,7 @@ class AuthManager:
             raise AuthenticationError("Invalid token")
 
 
-class AuthBackend(AuthenticationBackend):
-    """خلفية المصادقة"""
 
-    async def authenticate(self, request: Request) -> Tuple[AuthCredentials, BaseUser]:
-        if "Authorization" not in request.headers:
-            return AuthCredentials([]), UnauthenticatedUser()
-
-        auth = request.headers["Authorization"]
-        try:
-            scheme, token = auth.split()
-            if scheme.lower() != 'bearer':
-                return AuthCredentials([]), UnauthenticatedUser()
-
-            # التحقق من التوكن
-            auth_manager = request.app.state.auth_manager
-            payload = await auth_manager.validate_token(token)
-
-            username = payload.get("sub")
-            scopes = payload.get("scopes", [])
-
-            return AuthCredentials(scopes), SimpleUser(username)
-        except Exception as e:
-            logger.error(f"Authentication error: {str(e)}")
-            return AuthCredentials([]), UnauthenticatedUser()
 
 
 # Auth Dependencies
