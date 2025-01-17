@@ -3,11 +3,15 @@ services:
     name: youtube-shorts-generator
     env: python
     buildCommand: |
+     mkdir -p /tmp/prometheus
+      chmod 777 /tmp/prometheus
       apt-get update && apt-get install -y ffmpeg netcat
       pip install --upgrade pip
       pip install -r requirements.txt
     startCommand: bash ./start.sh
     envVars:
+      - key: PROMETHEUS_MULTIPROC_DIR
+        value: /tmp/prometheus
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: APP_ENV
@@ -45,6 +49,6 @@ services:
     healthCheckPath: /health
     autoDeploy: true
     disk:
-      name: temp
-      mountPath: /app/temp
+      name: prometheus
+      mountPath: /tmp/prometheus
       sizeGB: 1

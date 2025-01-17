@@ -95,6 +95,9 @@ from middleware import (
 )
 
 
+PROMETHEUS_DIR = os.getenv('PROMETHEUS_MULTIPROC_DIR', '/tmp/prometheus')
+Path(PROMETHEUS_DIR).mkdir(parents=True, exist_ok=True)
+
 
 load_dotenv(override=True)
 
@@ -283,13 +286,17 @@ REQUEST_COUNT = Counter(
     'http_requests_total',
     'Total HTTP requests',
     registry=REGISTRY,
-    labelnames=['method', 'endpoint', 'status']  # تغيير من labels إلى labelnames
+    labelnames=['method', 'endpoint', 'status'],
+    multiprocess_mode='livesum'
+
 )
 REQUEST_LATENCY = Histogram(
     'http_request_duration_seconds',
     'HTTP request latency',
     registry=REGISTRY,
-    labelnames=['method', 'endpoint']  # تغيير من labels إلى labelnames
+    labelnames=['method', 'endpoint'],
+    multiprocess_mode='livesum'
+
 )
 
 TASK_COMPLETION = Counter(
@@ -351,7 +358,9 @@ app.add_middleware(
 ACTIVE_CONNECTIONS = Gauge(
     'active_connections',
     'Number of active connections',
-    registry=REGISTRY
+    registry=REGISTRY,
+    multiprocess_mode='livesum'
+
 )
 
 # Base Models
