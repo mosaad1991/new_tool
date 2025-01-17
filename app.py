@@ -882,11 +882,7 @@ async def init_auth_manager():
         # عدم رفع الخطأ هنا للسماح للتطبيق بالاستمرار
         app.state.auth_manager = None
 
-# Add Auth Middleware
-app.add_middleware(
-    AuthenticationMiddleware,
-    backend=AuthBackend()
-)
+
 
 # Request Tracking
 class RequestTracker:
