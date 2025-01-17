@@ -536,7 +536,6 @@ async def check_redis_health(request: Request, call_next):
         )
 
 
-app = FastAPI()
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
