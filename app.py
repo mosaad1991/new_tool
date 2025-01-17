@@ -14,7 +14,7 @@ from fastapi_limiter import FastAPILimiter
 from fastapi_limiter.depends import RateLimiter
 from fastapi import Query
 from fastapi import Body
-
+from fastapi import FastAPI, HTTPException
 
 # Starlette Imports
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -534,6 +534,16 @@ async def check_redis_health(request: Request, call_next):
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
+
+
+app = FastAPI()
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"رسالة": exc.detail}
+    )
 
 # Request ID Middleware
 @app.middleware("http")
