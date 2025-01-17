@@ -65,7 +65,6 @@ logconfig_dict = {
 # ---------- Process Management ----------
 preload_app = True
 reload = os.getenv('APP_ENV') == 'development'
-reload_extra_files = ['.env']
 max_requests = int(os.getenv('MAX_REQUESTS', '1000'))
 max_requests_jitter = int(os.getenv('MAX_REQUESTS_JITTER', '50'))
 
