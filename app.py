@@ -540,10 +540,17 @@ app = FastAPI()
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
+    """معالج الأخطاء العام"""
     return JSONResponse(
         status_code=exc.status_code,
-        content={"رسالة": exc.detail}
+        content={
+            "status": "error",
+            "message": str(exc.detail),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
     )
+
+app.include_router(router)
 
 # Request ID Middleware
 @app.middleware("http")

@@ -32,15 +32,3 @@ async def health_options():
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
 
-# التعامل مع الأخطاء
-@router.exception_handler(HTTPException)
-async def http_exception_handler(request, exc):
-    """معالج الأخطاء العام"""
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "status": "error",
-            "message": str(exc.detail),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-    )
