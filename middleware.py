@@ -7,7 +7,7 @@ import traceback
 from datetime import datetime, timezone
 import asyncio
 from typing import Optional
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Histogram, multiprocess
 
 # مقاييس الأداء
 REQUEST_DURATION = Histogram(

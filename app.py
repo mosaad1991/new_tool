@@ -59,6 +59,7 @@ import multiprocessing
 import socket
 
 # Monitoring & Performance
+from prometheus_client import multiprocess
 from prometheus_client import (
     Counter, Histogram, Gauge, Summary,
     generate_latest, CollectorRegistry
@@ -154,6 +155,8 @@ class ResourceNotFoundError(CustomError):
 
 
 REGISTRY = CollectorRegistry()
+multiprocess.MultiProcessCollector(registry)
+
 # تحديد RESOURCE_USAGE
 RESOURCE_USAGE = Gauge(
     'resource_usage_percent',
@@ -287,7 +290,7 @@ REQUEST_COUNT = Counter(
     'Total HTTP requests',
     registry=REGISTRY,
     labelnames=['method', 'endpoint', 'status'],
-    multiprocess_mode='livesum'
+
 
 )
 REQUEST_LATENCY = Histogram(
@@ -295,7 +298,6 @@ REQUEST_LATENCY = Histogram(
     'HTTP request latency',
     registry=REGISTRY,
     labelnames=['method', 'endpoint'],
-    multiprocess_mode='livesum'
 
 )
 
@@ -359,7 +361,7 @@ ACTIVE_CONNECTIONS = Gauge(
     'active_connections',
     'Number of active connections',
     registry=REGISTRY,
-    multiprocess_mode='livesum'
+
 
 )
 
@@ -1511,7 +1513,7 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """حدث إيقاف التشغيل"""
+    """إجراءات إيقاف التشغيل وتنظيف الموارد"""
     try:
         global worker_manager
         logging.info("Starting application shutdown...")
@@ -1519,6 +1521,10 @@ async def shutdown_event():
         if worker_manager:
             # إيقاف العمليات بشكل آمن
             await worker_manager.graceful_shutdown()
+
+        # تنظيف مقاييس Prometheus
+        if os.getenv('PROMETHEUS_MULTIPROC_DIR'):
+            multiprocess.mark_process_dead(os.getpid())
 
         # إيقاف المهام المعلقة بشكل آمن
         tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
@@ -1546,7 +1552,6 @@ async def shutdown_event():
             except Exception as e:
                 logging.error(f"Error cleaning up Redis manager: {str(e)}")
             delattr(app.state, 'redis_manager')
-
 
 async def cleanup_resources():
     """تنظيف الموارد"""

@@ -1,6 +1,7 @@
 import multiprocessing
 import os
 from prometheus_client import multiprocess
+from pathlib import Path
 
 # ---------- Core Configuration ----------
 wsgi_app = "app:app"
@@ -46,6 +47,9 @@ logconfig_dict = {
         'standard': {
             'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
         },
+        'access': {
+            'format': '%(message)s'
+        }
     },
     'handlers': {
         'console': {
@@ -53,12 +57,32 @@ logconfig_dict = {
             'formatter': 'standard',
             'stream': 'ext://sys.stdout'
         },
+        'error_console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'standard',
+            'stream': 'ext://sys.stderr'
+        },
+        'access_console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'access',
+            'stream': 'ext://sys.stdout'
+        }
     },
     'loggers': {
         '': {
             'handlers': ['console'],
             'level': 'INFO',
         },
+        'gunicorn.error': {
+            'handlers': ['error_console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'gunicorn.access': {
+            'handlers': ['access_console'],
+            'level': 'INFO',
+            'propagate': False,
+        }
     }
 }
 
@@ -69,38 +93,56 @@ max_requests = int(os.getenv('MAX_REQUESTS', '1000'))
 max_requests_jitter = int(os.getenv('MAX_REQUESTS_JITTER', '50'))
 
 # ---------- Server Hooks ----------
-def child_exit(server, worker):
-    """Cleanup after worker exit"""
-    multiprocess.mark_process_dead(worker.pid)
-
 def when_ready(server):
-    """Called when server is ready to accept connections"""
+    """تشغيل عند جاهزية الخادم"""
     server.log.info("Server is ready. Monitoring enabled.")
 
 def on_starting(server):
-    """Server startup actions"""
+    """إجراءات بدء التشغيل"""
     server.log.info("Starting YouTube Shorts Generator Server")
-    # Initialize prometheus dir
-    prometheus_dir = os.getenv('PROMETHEUS_MULTIPROC_DIR', '/tmp')
-    if not os.path.exists(prometheus_dir):
-        os.makedirs(prometheus_dir)
+    
+    # تهيئة مجلد Prometheus
+    prometheus_dir = os.getenv('PROMETHEUS_MULTIPROC_DIR', '/tmp/prometheus')
+    Path(prometheus_dir).mkdir(parents=True, exist_ok=True)
+    
+    # تنظيف ملفات المقاييس القديمة
+    for f in Path(prometheus_dir).glob('*.db'):
+        try:
+            f.unlink()
+        except Exception as e:
+            server.log.warning(f"Could not delete {f}: {e}")
+
+def on_reload(server):
+    """إجراءات إعادة التحميل"""
+    server.log.info("Reloading server configuration")
+    multiprocess.mark_process_dead(server.pid)
 
 def worker_abort(worker):
-    """Handle worker abort"""
+    """إدارة إيقاف العامل"""
     worker.log.warning(f"Worker {worker.pid} aborted")
+    multiprocess.mark_process_dead(worker.pid)
 
 def worker_int(worker):
-    """Handle worker shutdown"""
+    """إدارة إيقاف العامل بإشارة INT"""
     worker.log.info(f"Worker {worker.pid} received INT or QUIT signal")
-    # Allow time for graceful shutdown
-    import threading
-    timer = threading.Timer(graceful_timeout, worker.exit_code)
-    timer.start()
+    worker.log.info("Closing prometheus metrics")
+    multiprocess.mark_process_dead(worker.pid)
+
+def child_exit(server, worker):
+    """تنظيف موارد العامل بعد الخروج"""
+    multiprocess.mark_process_dead(worker.pid)
+    server.log.info(f"Worker {worker.pid} exited")
+
+def post_fork(server, worker):
+    """إجراءات ما بعد تفريع العامل"""
+    server.log.info(f"Worker {worker.pid} spawned")
+    # إعادة تعيين المقاييس للعامل الجديد
+    multiprocess.mark_process_dead(worker.pid)
 
 # ---------- Environment Variables ----------
 raw_env = [
     f"APP_ENV={os.getenv('APP_ENV', 'production')}",
-    f"PROMETHEUS_MULTIPROC_DIR={os.getenv('PROMETHEUS_MULTIPROC_DIR', '/tmp')}",
+    f"PROMETHEUS_MULTIPROC_DIR={os.getenv('PROMETHEUS_MULTIPROC_DIR', '/tmp/prometheus')}",
     f"TASK_TIMEOUT={os.getenv('TASK_TIMEOUT', '300')}",
     f"REDIS_STREAM_MAX_LEN={os.getenv('REDIS_STREAM_MAX_LEN', '1000')}"
 ]
