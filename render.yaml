@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: youtube-shorts-generator
+    env: python
+    buildCommand: |
+      apt-get update && apt-get install -y ffmpeg netcat
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: bash ./start.sh
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: APP_ENV
+        value: production
+      - key: CHAIN_TIMEOUT
+        value: "600"
+      - key: TASK_TIMEOUT
+        value: "300"
+      - key: REDIS_STREAM_MAX_LEN
+        value: "1000"
+      - key: CLEAN_REDIS_ON_START
+        value: "false"
+      - key: WORKERS
+        value: "4"
+      - key: LOG_LEVEL
+        value: "info"
+      - key: REDIS_MERNA_URL
+        fromGroup: redis-config
+      - key: REDIS_AQRABENO_URL
+        fromGroup: redis-config
+      - key: REDIS_SWALF_URL
+        fromGroup: redis-config
+      - key: REDIS_MOSAAD_URL
+        fromGroup: redis-config
+      - key: REDIS_MAX_RETRIES
+        value: "3"
+      - key: REDIS_TIMEOUT
+        value: "30"
+      - key: REDIS_MAX_CONNECTIONS
+        value: "20"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
+    healthCheckPath: /health
+    autoDeploy: true
+    disk:
+      name: temp
+      mountPath: /app/temp
+      sizeGB: 1
