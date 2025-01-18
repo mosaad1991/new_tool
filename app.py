@@ -155,7 +155,8 @@ class ResourceNotFoundError(CustomError):
 
 
 REGISTRY = CollectorRegistry()
-multiprocess.MultiProcessCollector(registry)
+if os.environ.get('PROMETHEUS_MULTIPROC_DIR'):
+    multiprocess.MultiProcessCollector(REGISTRY)
 
 # تحديد RESOURCE_USAGE
 RESOURCE_USAGE = Gauge(
@@ -164,6 +165,40 @@ RESOURCE_USAGE = Gauge(
     ['resource_type'],
     registry=REGISTRY
 )
+
+
+# Monitoring configuration
+REQUEST_COUNT = Counter(
+    'http_requests_total',
+    'Total HTTP requests',
+    registry=REGISTRY,
+    labelnames=['method', 'endpoint', 'status'],
+
+
+)
+REQUEST_LATENCY = Histogram(
+    'http_request_duration_seconds',
+    'HTTP request latency',
+    registry=REGISTRY,
+    labelnames=['method', 'endpoint'],
+
+)
+
+TASK_COMPLETION = Counter(
+    'task_completion_total',
+    'Completed tasks',
+    registry=REGISTRY,
+    labelnames=['task_number', 'status']  # تغيير من labels إلى labelnames
+)
+
+
+MEMORY_USAGE = Gauge(
+    'memory_usage_bytes',
+    'Memory usage in bytes',
+    labelnames=['type'],
+    registry=REGISTRY,
+)
+
 
 # في بداية الملف بعد الاستيرادات
 def validate_env_variables():
@@ -262,59 +297,13 @@ app = FastAPI(
     version=API_VERSION,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json",
-    openapi_tags=[
-        {
-            "name": "processing",
-            "description": "Content processing operations"
-        },
-        {
-            "name": "auth",
-            "description": "Authentication operations"
-        },
-        {
-            "name": "monitoring",
-            "description": "Monitoring and health check operations"
-        }
-    ]
+    openapi_url="/api/openapi.json"
 )
 
 # Security configuration
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 security = HTTPBearer()
-
-# Monitoring configuration
-REQUEST_COUNT = Counter(
-    'http_requests_total',
-    'Total HTTP requests',
-    registry=REGISTRY,
-    labelnames=['method', 'endpoint', 'status'],
-
-
-)
-REQUEST_LATENCY = Histogram(
-    'http_request_duration_seconds',
-    'HTTP request latency',
-    registry=REGISTRY,
-    labelnames=['method', 'endpoint'],
-
-)
-
-TASK_COMPLETION = Counter(
-    'task_completion_total',
-    'Completed tasks',
-    registry=REGISTRY,
-    labelnames=['task_number', 'status']  # تغيير من labels إلى labelnames
-)
-
-
-MEMORY_USAGE = Gauge(
-    'memory_usage_bytes',
-    'Memory usage in bytes',
-    registry=REGISTRY,
-    labelnames=['type']  # تغيير من labels إلى labelnames
-)
 
 # Rate limiting
 stream_rate_limit = RateLimiter(times=100, seconds=60)  # 100 requests per minute
@@ -520,6 +509,12 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
         ).model_dump()
     )
 
+@app.get("/metrics")
+async def metrics():
+    return Response(
+        generate_latest(REGISTRY),
+        media_type="text/plain"
+    )
 
 @app.middleware("http")
 async def check_redis_health(request: Request, call_next):
