@@ -5,7 +5,8 @@ from pathlib import Path
 
 # ---------- Core Configuration ----------
 wsgi_app = "app:app"
-bind = f"0.0.0.0:{os.getenv('PORT', '10000')}"
+port = int(os.getenv('PORT', 10000))
+bind = f"0.0.0.0:{port}"
 workers = int(os.getenv('WORKERS', multiprocessing.cpu_count() * 2 + 1))
 worker_class = "uvicorn.workers.UvicornWorker"
 
@@ -94,12 +95,13 @@ max_requests_jitter = int(os.getenv('MAX_REQUESTS_JITTER', '50'))
 
 # ---------- Server Hooks ----------
 def when_ready(server):
-    """تشغيل عند جاهزية الخادم"""
-    server.log.info("Server is ready. Monitoring enabled.")
+    """يتم تشغيله عندما يكون الخادم جاهزاً"""
+    server.log.info(f"Server is ready. Listening on port {port}")
+    server.log.info("Monitoring enabled.")
 
 def on_starting(server):
     """إجراءات بدء التشغيل"""
-    server.log.info("Starting YouTube Shorts Generator Server")
+    server.log.info(f"Starting YouTube Shorts Generator Server on port {port}")
     
     # تهيئة مجلد Prometheus
     prometheus_dir = os.getenv('PROMETHEUS_MULTIPROC_DIR', '/tmp/prometheus')
@@ -127,6 +129,11 @@ def worker_int(worker):
     worker.log.info(f"Worker {worker.pid} received INT or QUIT signal")
     worker.log.info("Closing prometheus metrics")
     multiprocess.mark_process_dead(worker.pid)
+    
+    # السماح بوقت للإيقاف الآمن
+    import threading
+    timer = threading.Timer(graceful_timeout, worker.exit_code)
+    timer.start()
 
 def child_exit(server, worker):
     """تنظيف موارد العامل بعد الخروج"""
@@ -136,7 +143,6 @@ def child_exit(server, worker):
 def post_fork(server, worker):
     """إجراءات ما بعد تفريع العامل"""
     server.log.info(f"Worker {worker.pid} spawned")
-    # إعادة تعيين المقاييس للعامل الجديد
     multiprocess.mark_process_dead(worker.pid)
 
 # ---------- Environment Variables ----------

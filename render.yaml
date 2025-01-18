@@ -2,16 +2,18 @@ services:
   - type: web
     name: youtube-shorts-generator
     env: python
+    region: frankfurt  # أو اختر المنطقة الأقرب لك
+    plan: starter
     buildCommand: |
-     mkdir -p /tmp/prometheus
+      mkdir -p /tmp/prometheus
       chmod 777 /tmp/prometheus
       apt-get update && apt-get install -y ffmpeg netcat
       pip install --upgrade pip
       pip install -r requirements.txt
     startCommand: bash ./start.sh
     envVars:
-      - key: PROMETHEUS_MULTIPROC_DIR
-        value: /tmp/prometheus
+      - key: PORT
+        value: 10000
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: APP_ENV
@@ -46,9 +48,35 @@ services:
         generateValue: true
       - key: SESSION_SECRET
         generateValue: true
+      - key: PROMETHEUS_MULTIPROC_DIR
+        value: /tmp/prometheus
     healthCheckPath: /health
     autoDeploy: true
+    domains:
+      - youtube-shorts-generator.onrender.com
     disk:
-      name: prometheus
-      mountPath: /tmp/prometheus
+      name: temp-storage
+      mountPath: /app/temp
       sizeGB: 1
+    scaling:
+      minInstances: 1
+      maxInstances: 1
+      targetMemoryPercent: 80
+      targetCPUPercent: 80
+    metrics:
+      - type: prometheus
+        path: /metrics
+        port: 10000
+        interval: 30s
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+    initialDeployHook: |
+      echo "Initial deployment completed. Version: $RENDER_GIT_COMMIT"

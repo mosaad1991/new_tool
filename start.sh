@@ -3,13 +3,8 @@ set -e
 
 echo "Checking environment..."
 
-# إنشاء مجلد Prometheus إذا لم يكن موجودًا
-PROMETHEUS_DIR=${PROMETHEUS_MULTIPROC_DIR:-/tmp/prometheus}
-mkdir -p "$PROMETHEUS_DIR"
-chmod 777 "$PROMETHEUS_DIR"
-
-# تنظيف ملفات Prometheus القديمة
-rm -f "$PROMETHEUS_DIR"/*.db
+# تعيين المنفذ الافتراضي إذا لم يكن محدداً
+export PORT=${PORT:-10000}
 
 # التحقق من المتغيرات البيئية المطلوبة
 required_vars=(
@@ -30,12 +25,34 @@ done
 
 # إنشاء المجلدات الضرورية
 mkdir -p logs temp
+chmod 777 temp
 
-echo "Starting server on port $PORT"
+# تهيئة مجلد prometheus
+PROMETHEUS_DIR=${PROMETHEUS_MULTIPROC_DIR:-/tmp/prometheus}
+mkdir -p "$PROMETHEUS_DIR"
+chmod 777 "$PROMETHEUS_DIR"
+
+# تنظيف ملفات Prometheus القديمة
+rm -f "$PROMETHEUS_DIR"/*.db
+
+# تعيين عدد العمال الافتراضي
+export WORKERS=${WORKERS:-4}
+export TIMEOUT=${TIMEOUT:-600}
+export LOG_LEVEL=${LOG_LEVEL:-info}
+
+# طباعة معلومات التكوين
+echo "Starting server with configuration:"
+echo "Port: $PORT"
+echo "Workers: $WORKERS"
+echo "Timeout: $TIMEOUT"
+echo "Log level: $LOG_LEVEL"
+echo "Prometheus directory: $PROMETHEUS_DIR"
+
+# تشغيل الخادم
 exec gunicorn app:app \
-    --workers ${WORKERS:-4} \
+    --bind "0.0.0.0:$PORT" \
+    --workers $WORKERS \
     --worker-class uvicorn.workers.UvicornWorker \
-    --bind 0.0.0.0:$PORT \
-    --timeout ${TIMEOUT:-600} \
-    --log-level ${LOG_LEVEL:-info} \
+    --timeout $TIMEOUT \
+    --log-level $LOG_LEVEL \
     --config gunicorn.conf.py
