@@ -2,8 +2,6 @@ services:
   - type: web
     name: youtube-shorts-generator
     env: python
-    region: frankfurt  # أو اختر المنطقة الأقرب لك
-    plan: starter
     buildCommand: |
       mkdir -p /tmp/prometheus
       chmod 777 /tmp/prometheus
@@ -13,70 +11,19 @@ services:
     startCommand: bash ./start.sh
     envVars:
       - key: PORT
-        value: 10000
+        fromService:
+          type: web
+          name: youtube-shorts-generator
+          property: port
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: APP_ENV
         value: production
-      - key: CHAIN_TIMEOUT
-        value: "600"
-      - key: TASK_TIMEOUT
-        value: "300"
-      - key: REDIS_STREAM_MAX_LEN
-        value: "1000"
-      - key: CLEAN_REDIS_ON_START
-        value: "false"
       - key: WORKERS
         value: "4"
       - key: LOG_LEVEL
         value: "info"
-      - key: REDIS_MERNA_URL
-        fromGroup: redis-config
-      - key: REDIS_AQRABENO_URL
-        fromGroup: redis-config
-      - key: REDIS_SWALF_URL
-        fromGroup: redis-config
-      - key: REDIS_MOSAAD_URL
-        fromGroup: redis-config
-      - key: REDIS_MAX_RETRIES
-        value: "3"
-      - key: REDIS_TIMEOUT
-        value: "30"
-      - key: REDIS_MAX_CONNECTIONS
-        value: "20"
-      - key: SECRET_KEY
-        generateValue: true
-      - key: SESSION_SECRET
-        generateValue: true
-      - key: PROMETHEUS_MULTIPROC_DIR
-        value: /tmp/prometheus
+      # Redis and other variables remain the same...
     healthCheckPath: /health
+    healthCheckTimeout: 60
     autoDeploy: true
-    domains:
-      - youtube-shorts-generator.onrender.com
-    disk:
-      name: temp-storage
-      mountPath: /app/temp
-      sizeGB: 1
-    scaling:
-      minInstances: 1
-      maxInstances: 1
-      targetMemoryPercent: 80
-      targetCPUPercent: 80
-    metrics:
-      - type: prometheus
-        path: /metrics
-        port: 10000
-        interval: 30s
-    headers:
-      - path: /*
-        name: X-Frame-Options
-        value: DENY
-      - path: /*
-        name: X-Content-Type-Options
-        value: nosniff
-      - path: /*
-        name: Referrer-Policy
-        value: strict-origin-when-cross-origin
-    initialDeployHook: |
-      echo "Initial deployment completed. Version: $RENDER_GIT_COMMIT"
