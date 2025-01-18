@@ -515,6 +515,34 @@ async def metrics():
         generate_latest(REGISTRY),
         media_type="text/plain"
     )
+@app.get("/")
+async def root():
+    """نقطة النهاية الرئيسية"""
+    return JSONResponse({
+        "status": "ok",
+        "message": "YouTube Shorts Generator API",
+        "version": API_VERSION,
+        "docs_url": "/api/docs",
+        "redoc_url": "/api/redoc",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+
+@app.get("/api")
+async def api_root():
+    """نقطة نهاية API الرئيسية"""
+    return JSONResponse({
+        "name": "YouTube Shorts Generator API",
+        "version": API_VERSION,
+        "status": "active",
+        "docs": {
+            "swagger": "/api/docs",
+            "redoc": "/api/redoc",
+            "openapi": "/api/openapi.json"
+        },
+        "health_check": "/health",
+        "metrics": "/metrics",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
 
 @app.middleware("http")
 async def check_redis_health(request: Request, call_next):
@@ -1195,20 +1223,25 @@ async def health_check():
         # فحص المكونات
         components_status = {
             "redis": "ok" if redis_ok else "error",
-            "core_logic": "ok" if hasattr(app.state, 'core_logic') else "error"
+            "auth": "ok" if hasattr(app.state, 'auth_manager') else "error",
+            "worker_manager": "ok" if worker_manager else "error"
         }
 
+        # معلومات النظام
         system_info = {
-            "memory_usage": psutil.Process().memory_info().rss / 1024 / 1024,  # بالميجابايت
+            "memory_usage_mb": psutil.Process().memory_info().rss / 1024 / 1024,
             "cpu_percent": psutil.cpu_percent(),
-            "up_time": time.time() - psutil.boot_time()
+            "workers": len(worker_manager.active_workers) if worker_manager else 0
         }
+
+        # الحالة الإجمالية
+        overall_status = "healthy" if all(v == "ok" for v in components_status.values()) else "degraded"
 
         return JSONResponse({
-            "status": "healthy" if all(v == "ok" for v in components_status.values()) else "degraded",
-            "components": components_status,
-            "system_info": system_info,
+            "status": overall_status,
             "version": API_VERSION,
+            "components": components_status,
+            "system": system_info,
             "timestamp": datetime.now(timezone.utc).isoformat()
         })
 
