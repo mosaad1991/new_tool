@@ -515,17 +515,72 @@ async def metrics():
         generate_latest(REGISTRY),
         media_type="text/plain"
     )
+
+
 @app.get("/")
 async def root():
     """نقطة النهاية الرئيسية"""
+    workers_count = len(worker_manager.active_workers) if worker_manager else 0
+
+    # فحص اتصالات Redis
+    redis_ok = await check_redis_connection()
+
+    # معلومات النظام
+    system_info = {
+        "memory_usage_mb": round(psutil.Process().memory_info().rss / 1024 / 1024, 2),
+        "cpu_percent": psutil.cpu_percent(),
+        "active_workers": workers_count
+    }
+
     return JSONResponse({
         "status": "ok",
-        "message": "YouTube Shorts Generator API",
+        "name": "YouTube Shorts Generator API",
         "version": API_VERSION,
-        "docs_url": "/api/docs",
-        "redoc_url": "/api/redoc",
+        "environment": os.getenv('APP_ENV', 'production'),
+        "health": {
+            "status": "healthy" if redis_ok and workers_count > 0 else "degraded",
+            "redis": "connected" if redis_ok else "error",
+            "workers": workers_count
+        },
+        "endpoints": {
+            "api": "/api",
+            "docs": "/api/docs",
+            "redoc": "/api/redoc",
+            "health": "/health",
+            "metrics": "/metrics"
+        },
+        "system": system_info,
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
+
+
+@app.head("/")
+async def head_root():
+    """معالجة طلبات HEAD للمسار الجذر"""
+    return Response(status_code=200)
+
+
+# استجابة للأخطاء 404
+@app.exception_handler(404)
+async def custom_404_handler(request: Request, __):
+    """معالج مخصص للمسارات غير الموجودة"""
+    return JSONResponse(
+        status_code=404,
+        content={
+            "status": "error",
+            "message": "Route not found",
+            "path": str(request.url),
+            "available_endpoints": {
+                "root": "/",
+                "api": "/api",
+                "docs": "/api/docs",
+                "redoc": "/api/redoc",
+                "health": "/health",
+                "metrics": "/metrics"
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    )
 
 @app.get("/api")
 async def api_root():
