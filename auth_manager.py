@@ -50,26 +50,42 @@ class AuthManager:
         return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
     async def verify_password(self, plain_password: str, hashed_password: str) -> bool:
-        """التحقق من كلمة المرور مع تسجيل تفصيلي للأخطاء"""
-        try:
-            logger.info(f"بدء التحقق من كلمة المرور")
-            logger.debug(f"طول كلمة المرور: {len(plain_password)}")
-            logger.debug(f"طول كلمة المرور المشفرة: {len(hashed_password)}")
+    """التحقق من كلمة المرور مع تسجيل تفصيلي للأخطاء"""
+    try:
+        logger.info(f"بدء التحقق من كلمة المرور")
+        logger.debug(f"كلمة المرور الأصلية: {plain_password}")
+        logger.debug(f"كلمة المرور المشفرة: {hashed_password}")
+        
+        # تحويل كلمة المرور إلى bytes
+        plain_password_bytes = plain_password.encode('utf-8')
+        hashed_password_bytes = hashed_password.encode('utf-8')
+        
+        # التحقق باستخدام bcrypt مباشرة
+        is_valid = bcrypt.checkpw(plain_password_bytes, hashed_password_bytes)
+        
+        logger.info(f"نتيجة التحقق من كلمة المرور: {is_valid}")
+        
+        # إذا كان التحقق فاشلًا، سنقوم بطباعة المزيد من المعلومات التفصيلية
+        if not is_valid:
+            logger.warning("معلومات إضافية للتصحيح:")
+            logger.warning(f"طول كلمة المرور الأصلية: {len(plain_password)}")
+            logger.warning(f"طول كلمة المرور المشفرة: {len(hashed_password)}")
             
-            # تحويل كلمة المرور إلى bytes
-            plain_password_bytes = plain_password.encode('utf-8')
-            hashed_password_bytes = hashed_password.encode('utf-8')
-            
-            # التحقق باستخدام bcrypt مباشرة
-            is_valid = bcrypt.checkpw(plain_password_bytes, hashed_password_bytes)
-            
-            logger.info(f"نتيجة التحقق من كلمة المرور: {is_valid}")
-            return is_valid
-        except Exception as e:
-            # تسجيل أي خطأ يحدث أثناء التحقق
-            logger.error(f"خطأ في التحقق من كلمة المرور: {str(e)}")
-            logger.error(f"التفاصيل الكاملة للخطأ: {traceback.format_exc()}")
-            return False
+            # محاولة فك التشفير بطرق مختلفة
+            try:
+                # محاولة إعادة تجزئة كلمة المرور باستخدام نفس الملح
+                salt = hashed_password_bytes[-29:-8]  # استخراج الملح من كلمة المرور المشفرة
+                rehashed = bcrypt.hashpw(plain_password_bytes, salt)
+                logger.warning(f"هل تطابقت إعادة التجزئة؟ {rehashed == hashed_password_bytes}")
+            except Exception as rehash_error:
+                logger.error(f"خطأ في إعادة التجزئة: {rehash_error}")
+        
+        return is_valid
+    except Exception as e:
+        # تسجيل أي خطأ يحدث أثناء التحقق
+        logger.error(f"خطأ غير متوقع في التحقق من كلمة المرور: {str(e)}")
+        logger.error(f"التفاصيل الكاملة للخطأ: {traceback.format_exc()}")
+        return False
 
     async def get_user(self, username: str) -> Optional[UserInDB]:
         """استرجاع معلومات المستخدم مع التعامل مع الأخطاء"""
