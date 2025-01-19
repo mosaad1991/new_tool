@@ -10,6 +10,7 @@ from fastapi.security import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse, RedirectResponse
+from fastapi.responses import FileResponse
 from fastapi_limiter import FastAPILimiter
 from fastapi_limiter.depends import RateLimiter
 from fastapi import Query
@@ -598,6 +599,14 @@ async def api_root():
         "metrics": "/metrics",
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
+
+@app.get('/favicon.ico')
+async def favicon():
+    """توفير أيقونة الموقع"""
+    favicon_path = os.path.join('static', 'favicon.ico')
+    if os.path.exists(favicon_path):
+        return FileResponse(favicon_path)
+    return Response(status_code=204)  # إذا لم يوجد الملف، نرجع استجابة فارغة
 
 @app.middleware("http")
 async def check_redis_health(request: Request, call_next):
