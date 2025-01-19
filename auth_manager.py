@@ -1,6 +1,7 @@
 import os
 import logging
 import json
+import traceback
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 from jose import JWTError, jwt
@@ -12,14 +13,12 @@ from custom_exceptions import AuthenticationError
 
 logger = logging.getLogger(__name__)
 
-
 class Token(BaseModel):
     """نموذج التوكن"""
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int
-
 
 class UserInDB(BaseModel):
     """نموذج المستخدم في قاعدة البيانات"""
@@ -28,14 +27,12 @@ class UserInDB(BaseModel):
     scopes: List[str] = []
     disabled: bool = False
 
-
 class AuthConfig:
     """تكوينات المصادقة"""
     SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")
     ALGORITHM = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
     REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 7))
-
 
 class AuthManager:
     """مدير المصادقة والأمان"""
@@ -46,47 +43,126 @@ class AuthManager:
             raise ValueError("Redis manager with active connections is required")
 
         self.redis_manager = redis_manager
-        self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        
+        # تحديث سياق التشفير للتعامل مع إصدارات bcrypt المختلفة
+        self.pwd_context = CryptContext(
+            schemes=["bcrypt"], 
+            deprecated="auto",
+            bcrypt__default_rounds=12  # تحديد عدد جولات التشفير
+        )
 
     async def verify_password(self, plain_password: str, hashed_password: str) -> bool:
-        """التحقق من كلمة المرور"""
-        return self.pwd_context.verify(plain_password, hashed_password)
+        """التحقق من كلمة المرور مع تسجيل تفصيلي للأخطاء"""
+        try:
+            logger.info(f"بدء التحقق من كلمة المرور")
+            logger.debug(f"طول كلمة المرور: {len(plain_password)}")
+            logger.debug(f"طول كلمة المرور المشفرة: {len(hashed_password)}")
+            
+            # محاولة التحقق من كلمة المرور
+            is_valid = self.pwd_context.verify(plain_password, hashed_password)
+            
+            logger.info(f"نتيجة التحقق من كلمة المرور: {is_valid}")
+            return is_valid
+        except Exception as e:
+            # تسجيل أي خطأ يحدث أثناء التحقق
+            logger.error(f"خطأ في التحقق من كلمة المرور: {str(e)}")
+            logger.error(f"التفاصيل الكاملة للخطأ: {traceback.format_exc()}")
+            return False
 
     def get_password_hash(self, password: str) -> str:
         """تشفير كلمة المرور"""
         return self.pwd_context.hash(password)
 
     async def get_user(self, username: str) -> Optional[UserInDB]:
-        """استرجاع معلومات المستخدم"""
+        """استرجاع معلومات المستخدم مع التعامل مع الأخطاء"""
         try:
+            # الحصول على العميل الحالي
             clients = await self.redis_manager.get_current_clients()
             redis_client = clients['text']
 
+            logger.info(f"محاولة استرجاع المستخدم: {username}")
+
+            # البحث عن المستخدم
             user_data = await redis_client.hgetall(f"user:{username}")
+            
+            logger.debug(f"بيانات المستخدم المسترجعة: {user_data}")
+
+            # التحقق من وجود المستخدم
             if not user_data:
+                logger.warning(f"لم يتم العثور على المستخدم: {username}")
                 return None
 
-            return UserInDB(
+            # معالجة نطاقات الصلاحيات بشكل أكثر مرونة
+            scopes_str = user_data.get('scopes', '[]')
+            try:
+                # محاولة تحويل النطاقات من JSON
+                scopes = json.loads(scopes_str) if scopes_str else []
+            except (json.JSONDecodeError, TypeError):
+                # استخدام النص مباشرة إذا فشل التحويل
+                scopes = [scopes_str] if scopes_str else []
+
+            # التحقق من وجود كلمة المرور المشفرة
+            hashed_password = user_data.get('hashed_password', '')
+            if not hashed_password:
+                logger.error(f"لا توجد كلمة مرور مشفرة للمستخدم: {username}")
+                return None
+
+            # إنشاء كائن المستخدم
+            user = UserInDB(
                 username=username,
-                hashed_password=user_data.get('hashed_password'),
-                scopes=json.loads(user_data.get('scopes', '[]')),
+                hashed_password=hashed_password,
+                scopes=scopes,
                 disabled=bool(int(user_data.get('disabled', '0')))
             )
 
+            logger.info("تم استرجاع المستخدم بنجاح")
+            return user
+
         except Exception as e:
-            logger.error(f"Error retrieving user data: {str(e)}")
+            # تسجيل أي أخطاء تحدث أثناء استرجاع المستخدم
+            logger.error(f"خطأ في استرجاع بيانات المستخدم {username}: {str(e)}")
+            logger.error(f"التفاصيل الكاملة للخطأ: {traceback.format_exc()}")
             return None
 
     async def authenticate_user(self, username: str, password: str) -> Optional[UserInDB]:
-        """مصادقة المستخدم"""
-        user = await self.get_user(username)
-        if not user:
+        """مصادقة المستخدم مع التعامل الكامل مع الأخطاء"""
+        try:
+            # تسجيل محاولة المصادقة
+            logger.info(f"محاولة مصادقة المستخدم: {username}")
+
+            # استرجاع المستخدم
+            user = await self.get_user(username)
+            
+            # التحقق من وجود المستخدم
+            if not user:
+                logger.warning(f"المستخدم غير موجود: {username}")
+                return None
+
+            # التحقق من تعطيل الحساب
+            if user.disabled:
+                logger.warning(f"الحساب معطل: {username}")
+                raise AuthenticationError("الحساب معطل")
+
+            # التحقق من كلمة المرور
+            is_valid = await self.verify_password(password, user.hashed_password)
+            
+            # التعامل مع نتيجة التحقق
+            if not is_valid:
+                logger.warning(f"فشل التحقق من كلمة المرور للمستخدم: {username}")
+                return None
+
+            logger.info(f"تمت المصادقة بنجاح للمستخدم: {username}")
+            return user
+
+        except AuthenticationError as ae:
+            # معالجة أخطاء المصادقة المحددة
+            logger.error(f"خطأ في المصادقة: {str(ae)}")
+            raise
+        except Exception as e:
+            # معالجة الأخطاء غير المتوقعة
+            logger.error(f"خطأ غير متوقع في المصادقة: {str(e)}")
+            logger.error(f"التفاصيل الكاملة للخطأ: {traceback.format_exc()}")
             return None
-        if not await self.verify_password(password, user.hashed_password):
-            return None
-        if user.disabled:
-            raise AuthenticationError("User account is disabled")
-        return user
 
     async def create_tokens(self, user: UserInDB) -> Token:
         """إنشاء التوكن"""
