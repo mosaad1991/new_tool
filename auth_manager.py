@@ -2,10 +2,10 @@ import os
 import logging
 import json
 import traceback
+import bcrypt
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from pydantic import BaseModel
 
 from redis_manager import EnhancedRedisManager
@@ -43,13 +43,11 @@ class AuthManager:
             raise ValueError("Redis manager with active connections is required")
 
         self.redis_manager = redis_manager
-        
-        # تحديث سياق التشفير للتعامل مع إصدارات bcrypt المختلفة
-        self.pwd_context = CryptContext(
-            schemes=["bcrypt"], 
-            deprecated="auto",
-            bcrypt__default_rounds=12  # تحديد عدد جولات التشفير
-        )
+
+    def get_password_hash(self, password: str) -> str:
+        """تشفير كلمة المرور"""
+        # تحويل كلمة المرور إلى bytes وتشفيرها
+        return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
     async def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """التحقق من كلمة المرور مع تسجيل تفصيلي للأخطاء"""
@@ -58,8 +56,12 @@ class AuthManager:
             logger.debug(f"طول كلمة المرور: {len(plain_password)}")
             logger.debug(f"طول كلمة المرور المشفرة: {len(hashed_password)}")
             
-            # محاولة التحقق من كلمة المرور
-            is_valid = self.pwd_context.verify(plain_password, hashed_password)
+            # تحويل كلمة المرور إلى bytes
+            plain_password_bytes = plain_password.encode('utf-8')
+            hashed_password_bytes = hashed_password.encode('utf-8')
+            
+            # التحقق باستخدام bcrypt مباشرة
+            is_valid = bcrypt.checkpw(plain_password_bytes, hashed_password_bytes)
             
             logger.info(f"نتيجة التحقق من كلمة المرور: {is_valid}")
             return is_valid
@@ -68,10 +70,6 @@ class AuthManager:
             logger.error(f"خطأ في التحقق من كلمة المرور: {str(e)}")
             logger.error(f"التفاصيل الكاملة للخطأ: {traceback.format_exc()}")
             return False
-
-    def get_password_hash(self, password: str) -> str:
-        """تشفير كلمة المرور"""
-        return self.pwd_context.hash(password)
 
     async def get_user(self, username: str) -> Optional[UserInDB]:
         """استرجاع معلومات المستخدم مع التعامل مع الأخطاء"""
@@ -85,7 +83,9 @@ class AuthManager:
             # البحث عن المستخدم
             user_data = await redis_client.hgetall(f"user:{username}")
             
-            logger.debug(f"بيانات المستخدم المسترجعة: {user_data}")
+            logger.info("بيانات المستخدم التفصيلية:")
+            for key, value in user_data.items():
+                logger.info(f"{key}: {value}")
 
             # التحقق من وجود المستخدم
             if not user_data:
