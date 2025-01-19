@@ -10,6 +10,7 @@ from fastapi.security import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi_limiter import FastAPILimiter
 from fastapi_limiter.depends import RateLimiter
@@ -300,6 +301,8 @@ app = FastAPI(
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json"
 )
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Security configuration
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -600,13 +603,34 @@ async def api_root():
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
 
+
 @app.get('/favicon.ico')
 async def favicon():
-    """توفير أيقونة الموقع"""
+    """تقديم أيقونة الموقع"""
     favicon_path = os.path.join('static', 'favicon.ico')
+
+    # إذا لم يوجد الملف، نقوم بإنشائه
+    if not os.path.exists('static'):
+        os.makedirs('static')
+
     if os.path.exists(favicon_path):
-        return FileResponse(favicon_path)
+        return FileResponse(
+            favicon_path,
+            media_type="image/x-icon",
+            headers={"Cache-Control": "public, max-age=31536000"}
+        )
     return Response(status_code=204)  # إذا لم يوجد الملف، نرجع استجابة فارغة
+
+
+# أضف مسار جديد للتحقق من الملفات الثابتة
+@app.get('/static/{filepath:path}')
+async def serve_static(filepath: str):
+    """تقديم الملفات الثابتة"""
+    static_path = os.path.join('static', filepath)
+    if os.path.exists(static_path):
+        return FileResponse(static_path)
+    return Response(status_code=404)
+
 
 @app.middleware("http")
 async def check_redis_health(request: Request, call_next):
