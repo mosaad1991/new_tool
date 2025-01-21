@@ -53,28 +53,58 @@ class AuthManager:
         """التحقق من كلمة المرور مع تسجيل تفصيلي للأخطاء"""
         try:
             logger.info("بدء التحقق من كلمة المرور")
-            logger.debug(f"طول كلمة المرور: {len(plain_password)}")
-            logger.debug(f"طول كلمة المرور المشفرة: {len(hashed_password)}")
-            
+            logger.debug(f"كلمة المرور الأصلية: {plain_password}")
+            logger.debug(f"كلمة المرور المشفرة: {hashed_password}")
+
             # تحويل كلمة المرور إلى bytes
             plain_password_bytes = plain_password.encode('utf-8')
             hashed_password_bytes = hashed_password.encode('utf-8')
-            
-            # التحقق باستخدام bcrypt مباشرة
-            is_valid = bcrypt.checkpw(plain_password_bytes, hashed_password_bytes)
-            
+
+            # التحقق باستخدام bcrypt مباشرة مع معالجة متقدمة
+            try:
+                # محاولة التحقق مباشرة
+                is_valid = bcrypt.checkpw(plain_password_bytes, hashed_password_bytes)
+            except Exception as direct_check_error:
+                logger.error(f"خطأ في التحقق المباشر: {direct_check_error}")
+
+                # محاولة بدائل للتحقق
+                try:
+                    # إزالة أي مسافات زائدة
+                    plain_password_stripped = plain_password.strip()
+                    plain_password_stripped_bytes = plain_password_stripped.encode('utf-8')
+
+                    # إعادة التحقق بعد إزالة المسافات
+                    is_valid = bcrypt.checkpw(plain_password_stripped_bytes, hashed_password_bytes)
+
+                    if is_valid:
+                        logger.info("نجاح التحقق بعد إزالة المسافات الزائدة")
+                except Exception as stripped_check_error:
+                    logger.error(f"خطأ في التحقق بعد إزالة المسافات: {stripped_check_error}")
+                    is_valid = False
+
             logger.info(f"نتيجة التحقق من كلمة المرور: {is_valid}")
-            
-            # إذا كان التحقق فاشلًا، سنقوم بطباعة المزيد من المعلومات التفصيلية
+
+            # معلومات تفصيلية إذا فشل التحقق
             if not is_valid:
                 logger.warning("معلومات إضافية للتصحيح:")
                 logger.warning(f"طول كلمة المرور الأصلية: {len(plain_password)}")
                 logger.warning(f"طول كلمة المرور المشفرة: {len(hashed_password)}")
-            
+                logger.warning(f"محتوى كلمة المرور الأصلية: {repr(plain_password)}")
+
+                # محاولة طباعة معلومات أكثر تفصيلاً
+                try:
+                    # محاولة استخراج معلومات من كلمة المرور المشفرة
+                    logger.warning(f"معلومات إضافية عن كلمة المرور المشفرة:")
+                    # طباعة بعض المعلومات الأساسية عن التجزئة
+                    salt = hashed_password_bytes[-29:-8]  # استخراج الملح من كلمة المرور المشفرة
+                    logger.warning(f"الملح المستخرج: {salt}")
+                except Exception as salt_error:
+                    logger.error(f"خطأ في استخراج معلومات الملح: {salt_error}")
+
             return is_valid
         except Exception as e:
-            # تسجيل أي خطأ يحدث أثناء التحقق
-            logger.error(f"خطأ في التحقق من كلمة المرور: {str(e)}")
+            # تسجيل أي خطأ غير متوقع
+            logger.error(f"خطأ غير متوقع في التحقق من كلمة المرور: {str(e)}")
             logger.error(f"التفاصيل الكاملة للخطأ: {traceback.format_exc()}")
             return False
 
